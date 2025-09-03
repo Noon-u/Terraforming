@@ -16,7 +16,7 @@ public class LightThrower : MonoBehaviour
 	{
 		controller = GetComponent<FirstPersonController>();
 		rb = GetComponent<Rigidbody>();
-		terraformer = FindObjectOfType<Terraformer>();
+		terraformer = FindFirstObjectByType<Terraformer>();
 	}
 
 
@@ -25,7 +25,7 @@ public class LightThrower : MonoBehaviour
 		if (Input.GetKeyDown(KeyCode.Q))
 		{
 			var l = Instantiate(lightPrefab, spawnPoint.position, spawnPoint.rotation);
-			l.Init(rb.velocity, controller.gravity, terraformer);
+			l.Init(rb.linearVelocity, controller.gravity, terraformer);
 		}
 	}
 }

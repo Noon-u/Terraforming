@@ -25,9 +25,9 @@ public class Terraformer : MonoBehaviour
 
 	void Start()
 	{
-		genTest = FindObjectOfType<GenTest>();
+		genTest = FindFirstObjectByType<GenTest>();
 		cam = Camera.main.transform;
-		firstPersonController = FindObjectOfType<FirstPersonController>();
+		firstPersonController = FindFirstObjectByType<FirstPersonController>();
 	}
 
 	void Update()
