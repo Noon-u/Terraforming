@@ -6,6 +6,7 @@ public class CharacterAnimator : MonoBehaviour
 {
 	Animator animator;
 	FirstPersonController controller;
+	FlatFirstPersonController flatController;
 
 	float speedPercent;
 
@@ -13,30 +14,60 @@ public class CharacterAnimator : MonoBehaviour
 	{
 		animator = GetComponentInChildren<Animator>();
 		controller = GetComponent<FirstPersonController>();
+		flatController = GetComponent<FlatFirstPersonController>();
 	}
 
 
 	void Update()
 	{
-		var state = controller.currentMoveState;
+		if (!animator)
+		{
+			return;
+		}
 
 		float targetSpeedPercent = 0;
-		if (state == FirstPersonController.MoveState.Walk)
+
+		if (controller)
 		{
-			targetSpeedPercent = 0.5f;
+			var state = controller.currentMoveState;
+			if (state == FirstPersonController.MoveState.Walk)
+			{
+				targetSpeedPercent = 0.5f;
+			}
+			else if (state == FirstPersonController.MoveState.Run)
+			{
+				targetSpeedPercent = 1;
+			}
+			else if (state == FirstPersonController.MoveState.Swim)
+			{
+				targetSpeedPercent = 0.5f;
+			}
+			animator.SetBool("Air", !controller.grounded);
 		}
-		else if (state == FirstPersonController.MoveState.Run)
+		else if (flatController)
 		{
-			targetSpeedPercent = 1;
+			var state = flatController.currentMoveState;
+			if (state == FlatFirstPersonController.MoveState.Walk)
+			{
+				targetSpeedPercent = 0.5f;
+			}
+			else if (state == FlatFirstPersonController.MoveState.Run)
+			{
+				targetSpeedPercent = 1;
+			}
+			else if (state == FlatFirstPersonController.MoveState.Swim)
+			{
+				targetSpeedPercent = 0.5f;
+			}
+			animator.SetBool("Air", !flatController.grounded);
 		}
-		else if (state == FirstPersonController.MoveState.Swim)
+		else
 		{
-			targetSpeedPercent = 0.5f;
+			// No controller found; nothing to animate
+			return;
 		}
 
 		speedPercent = Mathf.Lerp(speedPercent, targetSpeedPercent, Time.deltaTime * 3);
-
 		animator.SetFloat("Speed Percent", speedPercent);
-		animator.SetBool("Air", !controller.grounded);
 	}
 }

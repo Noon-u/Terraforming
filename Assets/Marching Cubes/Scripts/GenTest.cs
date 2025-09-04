@@ -20,6 +20,10 @@ public class GenTest : MonoBehaviour
 	public bool blurMap;
 	public int blurRadius = 3;
 
+	[Header("World Type")]
+	public bool flatWorld = true;
+	public float planeHeight = 0;
+
 	[Header("References")]
 	public ComputeShader meshCompute;
 	public ComputeShader densityCompute;
@@ -119,6 +123,8 @@ public class GenTest : MonoBehaviour
 		densityCompute.SetFloat("planetSize", boundsSize);
 		densityCompute.SetFloat("noiseHeightMultiplier", noiseHeightMultiplier);
 		densityCompute.SetFloat("noiseScale", noiseScale);
+		densityCompute.SetInt("isFlatWorld", flatWorld ? 1 : 0);
+		densityCompute.SetFloat("planeHeight", planeHeight);
 
 		ComputeHelper.Dispatch(densityCompute, textureSize, textureSize, textureSize);
 
@@ -185,8 +191,13 @@ public class GenTest : MonoBehaviour
 
 		// TODO: move somewhere more sensible
 		material.SetTexture("DensityTex", originalMap);
-		material.SetFloat("oceanRadius", FindFirstObjectByType<Water>().radius);
+		var water = FindFirstObjectByType<Water>();
+		if (water)
+		{
+			material.SetFloat("oceanRadius", water.radius);
+		}
 		material.SetFloat("planetBoundsSize", boundsSize);
+		material.SetInt("isFlatWorld", flatWorld ? 1 : 0);
 
 		/*
 		if (Input.GetKeyDown(KeyCode.G))

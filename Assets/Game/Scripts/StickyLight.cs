@@ -13,6 +13,7 @@ public class StickyLight : MonoBehaviour
 
 	public Vector3 velocity;
 	float gravity;
+    public bool flatWorld;
 
 	bool stuck;
 
@@ -45,7 +46,7 @@ public class StickyLight : MonoBehaviour
 			return;
 		}
 
-		Vector3 accelDueToGravity = -transform.position.normalized * gravity;
+		Vector3 accelDueToGravity = (flatWorld ? Vector3.down : -transform.position.normalized) * gravity;
 		velocity += accelDueToGravity * Time.deltaTime;
 		Vector3 moveAmount = velocity * Time.deltaTime;
 

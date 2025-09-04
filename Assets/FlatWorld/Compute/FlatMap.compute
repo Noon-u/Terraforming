@@ -1,13 +1,12 @@
-﻿#pragma kernel CSMain
-#include "/Includes/Noise.compute"
+#pragma kernel CSMain
+#include "Assets/Marching Cubes/Scripts/Compute/Includes/Noise.compute"
 
 RWTexture3D<float> DensityTexture;
 int textureSize;
 
-float planetSize;
+float worldSize;
 float noiseScale;
 float noiseHeightMultiplier;
-int isFlatWorld;
 float planeHeight;
 
 float fbm(int numLayers, float lacunarity, float persistence, float scale, float3 pos) {
@@ -17,7 +16,6 @@ float fbm(int numLayers, float lacunarity, float persistence, float scale, float
 
 	for (int i = 0; i < numLayers; i ++) {
 		float n = 1-abs(snoise(pos * frequency)*2-1);
-		//n*=n;
 		noise += n * amplitude;
 
 		amplitude *= persistence;
@@ -28,30 +26,11 @@ float fbm(int numLayers, float lacunarity, float persistence, float scale, float
 }
 
 float calculateDensity(int3 cell) {
-	float3 worldPos = (cell / float(textureSize-1.0) - 0.5f) * planetSize;
-
-	float density = 0;
-
-	if (isFlatWorld == 1) {
-		float3 horizPos = float3(worldPos.x, 0, worldPos.z);
-		float heightNoise = fbm(6, 2, 0.5, noiseScale, horizPos) * noiseHeightMultiplier;
-		float surfaceY = planeHeight + heightNoise;
-		density = worldPos.y - surfaceY;
-	} else {
-		float halfS = planetSize / 2;
-		float maxD = length(float3(halfS,halfS,halfS));
-
-		float fudge = 1;
-
-		density = length(worldPos) / (maxD + fudge) - 0.5;
-
-		// Noise
-		float noise = fbm(6, 2, 0.5, noiseScale, worldPos) * noiseHeightMultiplier;
-
-		density += noise;
-	}
-
-	return density;
+	float3 worldPos = (cell / float(textureSize-1.0) - 0.5f) * worldSize;
+	float3 horizPos = float3(worldPos.x, 0, worldPos.z);
+	float heightNoise = fbm(6, 2, 0.5, noiseScale, horizPos) * noiseHeightMultiplier;
+	float surfaceY = planeHeight + heightNoise;
+	return worldPos.y - surfaceY;
 }
 
 [numthreads(8,8,8)]
@@ -76,3 +55,5 @@ void CSMain (int3 id : SV_DispatchThreadID)
 
 	DensityTexture[id] = density;
 }
+
+

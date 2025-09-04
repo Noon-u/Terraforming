@@ -1,8 +1,6 @@
-
 using UnityEngine;
-using System.Collections;
 
-public class FirstPersonController : MonoBehaviour
+public class FlatFirstPersonController : MonoBehaviour
 {
 
 	public enum MoveState
@@ -13,7 +11,6 @@ public class FirstPersonController : MonoBehaviour
 		Swim
 	}
 
-	// public vars
 	public float gravity = 15;
 	public float buoyancy = 6;
 	public float mouseSensitivityX = 1;
@@ -25,10 +22,8 @@ public class FirstPersonController : MonoBehaviour
 	public float waterDrag = 0.5f;
 	public Vector2 lookAngleMinMax = new Vector2(-75, 80);
 	public LayerMask terrainMask;
-	public bool flatWorld;
 	public float waterHeight = 0;
 
-	// System vars
 	public float groundedRaySizeFactor = 0.7f;
 	public float groundedRayLength = 0.1f;
 	public bool grounded;
@@ -40,22 +35,14 @@ public class FirstPersonController : MonoBehaviour
 	CapsuleCollider capsuleCollider;
 
 	public MoveState currentMoveState { get; private set; }
-	float waterRadius;
 	bool underwater;
-
 	bool debug_stopMovement;
-
+	bool terraUpdate;
+	Vector3 lastHitPoint;
 
 	void Awake()
 	{
-		Water water = FindFirstObjectByType<Water>();
-		if (water)
-		{
-			waterRadius = water.radius;
-		}
-
 		Cursor.lockState = CursorLockMode.Locked;
-		//Cursor.visible = false;
 		cameraTransform = Camera.main.transform;
 		rigidBody = GetComponent<Rigidbody>();
 		rigidBody.useGravity = false;
@@ -69,25 +56,13 @@ public class FirstPersonController : MonoBehaviour
 		if (Input.GetKeyDown(KeyCode.Escape))
 		{
 			debug_stopMovement = !debug_stopMovement;
-
 			Cursor.visible = debug_stopMovement;
 			Cursor.lockState = (debug_stopMovement) ? CursorLockMode.None : CursorLockMode.Locked;
-
 			if (debug_stopMovement)
 			{
 				desiredLocalVelocity = Vector3.zero;
 				rigidBody.linearVelocity = Vector3.zero;
 			}
-
-			if (!Application.isEditor)
-			{
-				Application.Quit();
-			}
-
-		}
-		if (Input.GetKeyDown(KeyCode.P))
-		{
-			Debug.Break();
 		}
 
 		if (debug_stopMovement)
@@ -95,97 +70,39 @@ public class FirstPersonController : MonoBehaviour
 			return;
 		}
 
+		underwater = cameraTransform.position.y < waterHeight + 0.25f;
 
-
-		underwater = flatWorld ? (cameraTransform.position.y < waterHeight + 0.25f) : ((cameraTransform.position - Vector3.zero).magnitude < waterRadius + 0.25f);
-
-		// Look rotation:
 		transform.Rotate(Vector3.up * Input.GetAxis("Mouse X") * mouseSensitivityX);
 		verticalLookRotation += Input.GetAxis("Mouse Y") * mouseSensitivityY;
 		verticalLookRotation = Mathf.Clamp(verticalLookRotation, lookAngleMinMax.x, lookAngleMinMax.y);
 		cameraTransform.localEulerAngles = Vector3.left * verticalLookRotation;
 
-		// Calculate movement:
 		float inputX = Input.GetAxisRaw("Horizontal");
 		float inputY = Input.GetAxisRaw("Vertical");
+		currentMoveState = MoveState.Idle;
+		if (underwater) currentMoveState = MoveState.Swim;
+		else if (inputX != 0 || inputY != 0) currentMoveState = Input.GetKey(KeyCode.LeftShift) ? MoveState.Run : MoveState.Walk;
 
-		if (underwater)
-		{
-			currentMoveState = MoveState.Swim;
-		}
-		else
-		{
-			currentMoveState = MoveState.Idle;
-			if (inputX != 0 || inputY != 0)
-			{
-				currentMoveState = Input.GetKey(KeyCode.LeftShift) ? MoveState.Run : MoveState.Walk;
-			}
-		}
-
-		float desiredMoveSpeed = 0;
-
-		if (currentMoveState == MoveState.Walk)
-		{
-			desiredMoveSpeed = walkSpeed;
-		}
-		else if (currentMoveState == MoveState.Run)
-		{
-			desiredMoveSpeed = runSpeed;
-		}
-		else if (currentMoveState == MoveState.Swim)
-		{
-			desiredMoveSpeed = swimSpeed;
-		}
-
-
+		float desiredMoveSpeed = (currentMoveState == MoveState.Walk) ? walkSpeed : (currentMoveState == MoveState.Run ? runSpeed : (currentMoveState == MoveState.Swim ? swimSpeed : 0));
 		Vector3 moveDir = new Vector3(inputX, 0, inputY).normalized;
 		Vector3 targetMoveVelocity = moveDir * desiredMoveSpeed;
 		desiredLocalVelocity = Vector3.SmoothDamp(desiredLocalVelocity, targetMoveVelocity, ref smoothMoveVelocity, .15f);
 
-		// Jump
-		if (Input.GetButtonDown("Jump"))
+		if (Input.GetButtonDown("Jump") && grounded)
 		{
-			if (grounded)
-			{
-				rigidBody.AddForce(transform.up * jumpForce, ForceMode.VelocityChange);
-			}
-		}
-
-		// Grounded check
-		Ray ray = new Ray(transform.position, -transform.up);
-		RaycastHit hit;
-
-
-		if (Physics.Raycast(ray, out hit, 1 + .1f, terrainMask))
-		{
-			grounded = true;
-		}
-		else
-		{
-			grounded = false;
+			rigidBody.AddForce(transform.up * jumpForce, ForceMode.VelocityChange);
 		}
 
 		grounded = IsGrounded();
-
 	}
 
 	void FixedUpdate()
 	{
-		if (debug_stopMovement)
-		{
-			return;
-		}
-
-		Vector3 planetCentre = Vector3.zero;
-		Vector3 gravityUp = flatWorld ? Vector3.up : (rigidBody.position - planetCentre).normalized;
-
-		// Align body's up axis with the centre of planet
+		if (debug_stopMovement) return;
+		Vector3 gravityUp = Vector3.up;
 		Vector3 localUp = MathUtility.LocalToWorldVector(rigidBody.rotation, Vector3.up);
 		rigidBody.rotation = Quaternion.FromToRotation(localUp, gravityUp) * rigidBody.rotation;
-
 		rigidBody.linearVelocity = (underwater) ? CalculateNewVelocitySwim(localUp) : CalculateNewVelocity(localUp);
-
-
 	}
 
 	void LateUpdate()
@@ -193,85 +110,44 @@ public class FirstPersonController : MonoBehaviour
 		if (terraUpdate)
 		{
 			Vector3 localUp = MathUtility.LocalToWorldVector(rigidBody.rotation, Vector3.up);
-			//Debug.Log("Update");
-			TerraTest(localUp);
-			terraUpdate = false;
-			//Debug.Break();
-		}
-	}
-
-	void TerraTest(Vector3 localUp)
-	{
-		float heightOffset = 5f;
-		Vector3 a = transform.position - localUp * (capsuleCollider.height / 2 + capsuleCollider.radius - heightOffset);
-		Vector3 b = transform.position + localUp * (capsuleCollider.height / 2 + capsuleCollider.radius + heightOffset);
-		RaycastHit hitInfo;
-
-		if (Physics.CapsuleCast(a, b, capsuleCollider.radius, -localUp, out hitInfo, heightOffset, terrainMask))
-		{
-			hp = hitInfo.point;
-			Vector3 newPos = (hp + transform.up * 1);
-			float deltaY = Vector3.Dot(transform.up, (newPos - transform.position));
-			if (deltaY > 0.05f)
+			float heightOffset = 5f;
+			Vector3 a = transform.position - localUp * (capsuleCollider.height / 2 + capsuleCollider.radius - heightOffset);
+			Vector3 b = transform.position + localUp * (capsuleCollider.height / 2 + capsuleCollider.radius + heightOffset);
+			RaycastHit hitInfo;
+			if (Physics.CapsuleCast(a, b, capsuleCollider.radius, -localUp, out hitInfo, heightOffset, terrainMask))
 			{
-				transform.position = newPos;
-				grounded = true;
+				Vector3 newPos = (hitInfo.point + transform.up * 1);
+				float deltaY = Vector3.Dot(transform.up, (newPos - transform.position));
+				if (deltaY > 0.05f)
+				{
+					transform.position = newPos;
+					grounded = true;
+				}
 			}
-		}
-
-	}
-
-	public void NotifyTerrainChanged(Vector3 point, float radius)
-	{
-		float dstFromCam = (point - cameraTransform.position).magnitude;
-		if (dstFromCam < radius + 3)
-		{
-			terraUpdate = true;
+			terraUpdate = false;
 		}
 	}
-
-	bool terraUpdate;
-	Vector3 hp;
-
 
 	Vector3 CalculateNewVelocitySwim(Vector3 localUp)
 	{
 		float deltaTime = Time.fixedDeltaTime;
 		Vector3 currentVelocity = rigidBody.linearVelocity;
-
-
 		Vector3 newVelocity = currentVelocity + localUp * (buoyancy - gravity) * deltaTime;
 		Vector3 drag = -newVelocity * waterDrag;
 		newVelocity += drag * deltaTime;
-
 		Vector3 swimForce = MathUtility.LocalToWorldVector(cameraTransform.rotation, desiredLocalVelocity);
 		Vector3 swimDeltaV = swimForce * deltaTime * 5;
-
-		if (newVelocity.x * Mathf.Sign(swimForce.x) < Mathf.Abs(swimForce.x))
-		{
-			newVelocity.x += swimDeltaV.x;
-		}
-		if (newVelocity.y * Mathf.Sign(swimForce.y) < Mathf.Abs(swimForce.y))
-		{
-			newVelocity.y += swimDeltaV.y;
-		}
-		if (newVelocity.z * Mathf.Sign(swimForce.z) < Mathf.Abs(swimForce.z))
-		{
-			newVelocity.z += swimDeltaV.z;
-		}
-
-
+		if (newVelocity.x * Mathf.Sign(swimForce.x) < Mathf.Abs(swimForce.x)) newVelocity.x += swimDeltaV.x;
+		if (newVelocity.y * Mathf.Sign(swimForce.y) < Mathf.Abs(swimForce.y)) newVelocity.y += swimDeltaV.y;
+		if (newVelocity.z * Mathf.Sign(swimForce.z) < Mathf.Abs(swimForce.z)) newVelocity.z += swimDeltaV.z;
 		return newVelocity;
 	}
 
 	Vector3 CalculateNewVelocity(Vector3 localUp)
 	{
-		// Apply movement and gravity to rigidbody
 		float deltaTime = Time.fixedDeltaTime;
 		Vector3 currentLocalVelocity = MathUtility.WorldToLocalVector(rigidBody.rotation, rigidBody.linearVelocity);
-
 		float localYVelocity = currentLocalVelocity.y + (-gravity) * deltaTime;
-
 		Vector3 desiredGlobalVelocity = MathUtility.LocalToWorldVector(rigidBody.rotation, desiredLocalVelocity);
 		desiredGlobalVelocity += localUp * localYVelocity;
 		return desiredGlobalVelocity;
@@ -279,50 +155,24 @@ public class FirstPersonController : MonoBehaviour
 
 	bool IsGrounded()
 	{
-
 		Vector3 centre = rigidBody.position;
 		Vector3 upDir = transform.up;
-
 		Vector3 castOrigin = centre + upDir * (-capsuleCollider.height / 2f + capsuleCollider.radius);
 		float groundedRayRadius = capsuleCollider.radius * groundedRaySizeFactor;
-
 		float groundedRayDst = capsuleCollider.radius - groundedRayRadius + groundedRayLength;
 		RaycastHit hitInfo;
-
 		if (Physics.SphereCast(castOrigin, groundedRayRadius, -upDir, out hitInfo, groundedRayDst, terrainMask))
 		{
 			return true;
 		}
-
 		return false;
 	}
 
-
-
-
-	void OnDrawGizmos()
+	public void NotifyTerrainChanged(Vector3 point, float radius)
 	{
-		if (Application.isPlaying)
-		{
-
-			bool grounded = IsGrounded();
-
-			Vector3 centre = rigidBody.position;
-			Vector3 upDir = transform.up;
-			Vector3 castOrigin = centre + upDir * (-capsuleCollider.height / 2f + capsuleCollider.radius);
-			float groundedRayRadius = capsuleCollider.radius * groundedRaySizeFactor;
-
-			float groundedRayDst = capsuleCollider.radius - groundedRayRadius + groundedRayLength;
-			Gizmos.color = (grounded) ? Color.green : Color.red;
-			Gizmos.color = new Color(Gizmos.color.r, Gizmos.color.g, Gizmos.color.b, 0.5f);
-			Gizmos.DrawSphere(castOrigin, groundedRayRadius);
-
-
-			Vector3 collisionSphereTip = castOrigin - upDir * (groundedRayRadius + groundedRayDst);
-			Gizmos.DrawSphere(collisionSphereTip + upDir * groundedRayRadius, groundedRayRadius);
-			Gizmos.color = Color.red;
-			Gizmos.DrawRay(castOrigin - upDir * groundedRayRadius, -upDir * groundedRayDst);
-
-		}
+		terraUpdate = true;
+		lastHitPoint = point;
 	}
 }
+
+

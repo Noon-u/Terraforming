@@ -16,9 +16,12 @@ public class Terraformer : MonoBehaviour
 
 	Transform cam;
 	GenTest genTest;
+	FlatGen flatGen;
 	bool hasHit;
 	Vector3 hitPoint;
 	FirstPersonController firstPersonController;
+	FlatFirstPersonController flatFirstPersonController;
+	bool fallbackLastHit;
 
 	bool isTerraforming;
 	Vector3 lastTerraformPointLocal;
@@ -26,8 +29,10 @@ public class Terraformer : MonoBehaviour
 	void Start()
 	{
 		genTest = FindFirstObjectByType<GenTest>();
+		flatGen = FindFirstObjectByType<FlatGen>();
 		cam = Camera.main.transform;
 		firstPersonController = FindFirstObjectByType<FirstPersonController>();
+		flatFirstPersonController = FindFirstObjectByType<FlatFirstPersonController>();
 	}
 
 	void Update()
@@ -40,6 +45,7 @@ public class Terraformer : MonoBehaviour
 
 		int numIterations = 5;
 		bool rayHitTerrain = false;
+		fallbackLastHit = false;
 
 
 
@@ -51,6 +57,14 @@ public class Terraformer : MonoBehaviour
 				lastTerraformPointLocal = MathUtility.WorldToLocalVector(cam.rotation, hit.point);
 				Terraform(hit.point);
 				rayHitTerrain = true;
+				break;
+			}
+			else if (Physics.SphereCast(cam.position, rayRadius, cam.forward, out hit, 1000, ~0))
+			{
+				lastTerraformPointLocal = MathUtility.WorldToLocalVector(cam.rotation, hit.point);
+				Terraform(hit.point);
+				rayHitTerrain = true;
+				fallbackLastHit = true;
 				break;
 			}
 		}
@@ -81,14 +95,29 @@ public class Terraformer : MonoBehaviour
 		if (Input.GetMouseButton(0))
 		{
 			isTerraforming = true;
-			genTest.Terraform(terraformPoint, -weight, terraformRadius);
-			firstPersonController.NotifyTerrainChanged(terraformPoint, terraformRadius);
+			if (flatGen)
+			{
+				flatGen.Terraform(terraformPoint, -weight, terraformRadius);
+				flatFirstPersonController?.NotifyTerrainChanged(terraformPoint, terraformRadius);
+			}
+			else if (genTest)
+			{
+				genTest.Terraform(terraformPoint, -weight, terraformRadius);
+				firstPersonController.NotifyTerrainChanged(terraformPoint, terraformRadius);
+			}
 		}
 		// Subtract terrain
 		else if (Input.GetMouseButton(1))
 		{
 			isTerraforming = true;
-			genTest.Terraform(terraformPoint, weight, terraformRadius);
+			if (flatGen)
+			{
+				flatGen.Terraform(terraformPoint, weight, terraformRadius);
+			}
+			else if (genTest)
+			{
+				genTest.Terraform(terraformPoint, weight, terraformRadius);
+			}
 		}
 
 		if (isTerraforming)
@@ -99,10 +128,22 @@ public class Terraformer : MonoBehaviour
 
 	void OnDrawGizmos()
 	{
-		if (hasHit)
+		if (!cam)
+		{
+			var main = Camera.main;
+			if (main) cam = main.transform;
+		}
+		if (cam)
+		{
+			Gizmos.color = new Color(1,1,1,0.25f);
+			Gizmos.DrawRay(cam.position, cam.forward * 3);
+		}
+		if (hasHit || fallbackLastHit)
 		{
 			Gizmos.color = Color.green;
 			Gizmos.DrawSphere(hitPoint, 0.25f);
+			Gizmos.color = Color.yellow;
+			Gizmos.DrawWireSphere(hitPoint, terraformRadius);
 		}
 	}
 }
