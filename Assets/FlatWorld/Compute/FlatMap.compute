@@ -40,19 +40,7 @@ void CSMain (int3 id : SV_DispatchThreadID)
 		return;
 	}
 
-	float density = 0;
-
-	const int b = 1;
-	if (id.x >= textureSize-b || id.y >= textureSize-b || id.z >= textureSize-b) {
-		density = 1;
-	}
-	else if (id.x <= b || id.y <= b || id.z <=b) {
-		density = 1;
-	}
-	else {
-		density = calculateDensity(id);
-	}
-
+	float density = calculateDensity(id);
 	DensityTexture[id] = density;
 }
 

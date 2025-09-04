@@ -32,7 +32,9 @@ int indexFromCoord(int3 coord) {
 }
 
 float sampleDensity(int3 coord) {
-	coord = max(0, min(coord, textureSize));
+	int3 minCoord = int3(0, 0, 0);
+	int3 maxCoord = int3(textureSize - 1, textureSize - 1, textureSize - 1);
+	coord = clamp(coord, minCoord, maxCoord);
 	return DensityTexture[coord];
 }
 

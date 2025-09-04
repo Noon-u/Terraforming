@@ -120,7 +120,9 @@ public class GenTest : MonoBehaviour
 
 		densityCompute.SetInt("textureSize", textureSize);
 
+		// Support both PlanetMap (planetSize) and FlatMap (worldSize)
 		densityCompute.SetFloat("planetSize", boundsSize);
+		densityCompute.SetFloat("worldSize", boundsSize);
 		densityCompute.SetFloat("noiseHeightMultiplier", noiseHeightMultiplier);
 		densityCompute.SetFloat("noiseScale", noiseScale);
 		densityCompute.SetInt("isFlatWorld", flatWorld ? 1 : 0);
