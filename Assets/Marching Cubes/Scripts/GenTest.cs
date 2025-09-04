@@ -24,6 +24,9 @@ public class GenTest : MonoBehaviour
 	public bool flatWorld = true;
 	public float planeHeight = 0;
 
+	[Header("Start Behavior")]
+	public bool generateOnStart = true;
+
 	[Header("References")]
 	public ComputeShader meshCompute;
 	public ComputeShader densityCompute;
@@ -53,11 +56,23 @@ public class GenTest : MonoBehaviour
 		InitTextures();
 		CreateBuffers();
 
-		CreateChunks();
+		bool loadedExisting = TryLoadExistingChunksFromChildren();
+		if (!loadedExisting)
+		{
+			CreateChunks();
+		}
 
-		var sw = System.Diagnostics.Stopwatch.StartNew();
-		GenerateAllChunks();
-		Debug.Log("Generation Time: " + sw.ElapsedMilliseconds + " ms");
+		if (generateOnStart)
+		{
+			var sw = System.Diagnostics.Stopwatch.StartNew();
+			GenerateAllChunks();
+			Debug.Log("Generation Time: " + sw.ElapsedMilliseconds + " ms");
+		}
+		else
+		{
+			// Prepare density textures so terraforming works without re-generating mesh
+			ComputeDensity();
+		}
 
 		ComputeHelper.CreateRenderTexture3D(ref originalMap, processedDensityTexture);
 		ComputeHelper.CopyRenderTexture3D(processedDensityTexture, originalMap);
@@ -111,6 +126,159 @@ public class GenTest : MonoBehaviour
 		Debug.Log("Sum: " + (timer_fetchVertexData.ElapsedMilliseconds + timer_processVertexData.ElapsedMilliseconds));
 
 
+	}
+
+	public void GenerateNow()
+	{
+		// Ensure resources and chunks exist when generating from Edit Mode
+		EnsureInitializedForGeneration();
+
+		// Rebuild chunks in Edit Mode to avoid duplicates
+		if (!Application.isPlaying)
+		{
+			DestroyAllChunks();
+			CreateChunks();
+		}
+
+		var sw = System.Diagnostics.Stopwatch.StartNew();
+		GenerateAllChunks();
+		Debug.Log("Generation Time: " + sw.ElapsedMilliseconds + " ms");
+		if (originalMap != null && processedDensityTexture != null)
+		{
+			ComputeHelper.CopyRenderTexture3D(processedDensityTexture, originalMap);
+		}
+
+		// Ensure material parameters are set even in Edit Mode
+		if (material)
+		{
+			material.SetTexture("DensityTex", originalMap);
+			material.SetFloat("planetBoundsSize", boundsSize);
+			material.SetInt("isFlatWorld", flatWorld ? 1 : 0);
+			var water = FindFirstObjectByType<Water>();
+			if (water)
+			{
+				material.SetFloat("oceanRadius", water.radius);
+			}
+		}
+	}
+
+	void EnsureInitializedForGeneration()
+	{
+		// Textures
+		if (rawDensityTexture == null || !rawDensityTexture.IsCreated() || processedDensityTexture == null || !processedDensityTexture.IsCreated())
+		{
+			InitTextures();
+		}
+
+		// Buffers
+		if (triangleBuffer == null || triCountBuffer == null || vertexDataArray == null)
+		{
+			CreateBuffers();
+		}
+
+		// Chunks
+		if (chunks == null || chunks.Length == 0)
+		{
+			CreateChunks();
+		}
+
+		// Original copy texture
+		if (originalMap == null || !originalMap.IsCreated())
+		{
+			ComputeHelper.CreateRenderTexture3D(ref originalMap, processedDensityTexture);
+			ComputeHelper.CopyRenderTexture3D(processedDensityTexture, originalMap);
+		}
+	}
+
+	void DestroyAllChunks()
+	{
+		// Release per-chunk resources
+		if (chunks != null)
+		{
+			for (int i = 0; i < chunks.Length; i++)
+			{
+				if (chunks[i] != null)
+				{
+					chunks[i].Release();
+				}
+			}
+		}
+
+		// Destroy any existing child GameObjects that are chunks
+		for (int i = transform.childCount - 1; i >= 0; i--)
+		{
+			var child = transform.GetChild(i);
+			if (!child.name.StartsWith("Chunk ("))
+			{
+				continue;
+			}
+			#if UNITY_EDITOR
+			if (!Application.isPlaying)
+			{
+				UnityEditor.Undo.DestroyObjectImmediate(child.gameObject);
+			}
+			else
+			{
+				Destroy(child.gameObject);
+			}
+			#else
+			Destroy(child.gameObject);
+			#endif
+		}
+
+		chunks = new Chunk[0];
+	}
+
+	public void ClearGenerated()
+	{
+		DestroyAllChunks();
+	}
+
+	bool TryLoadExistingChunksFromChildren()
+	{
+		int expectedCount = numChunks * numChunks * numChunks;
+		if (transform.childCount == 0)
+		{
+			return false;
+		}
+
+		float chunkSize = (boundsSize) / numChunks;
+		Chunk[] loaded = new Chunk[expectedCount];
+		int i = 0;
+		for (int y = 0; y < numChunks; y++)
+		{
+			for (int x = 0; x < numChunks; x++)
+			{
+				for (int z = 0; z < numChunks; z++)
+				{
+					string childName = $"Chunk ({x}, {y}, {z})";
+					Transform child = transform.Find(childName);
+					if (child == null)
+					{
+						return false;
+					}
+					var filter = child.GetComponent<MeshFilter>();
+					var renderer = child.GetComponent<MeshRenderer>();
+					var collider = child.GetComponent<MeshCollider>();
+					if (filter == null || renderer == null)
+					{
+						return false;
+					}
+					Vector3Int coord = new Vector3Int(x, y, z);
+					float posX = (-(numChunks - 1f) / 2 + x) * chunkSize;
+					float posY = (-(numChunks - 1f) / 2 + y) * chunkSize;
+					float posZ = (-(numChunks - 1f) / 2 + z) * chunkSize;
+					Vector3 centre = new Vector3(posX, posY, posZ);
+
+					Chunk chunk = new Chunk(coord, centre, chunkSize, numPointsPerAxis, filter, renderer, collider);
+					chunk.SetMaterial(material);
+					loaded[i] = chunk;
+					i++;
+				}
+			}
+		}
+		chunks = loaded;
+		return true;
 	}
 
 	void ComputeDensity()
@@ -171,6 +339,10 @@ public class GenTest : MonoBehaviour
 		triCountBuffer.SetData(vertexCountData);
 		ComputeBuffer.CopyCount(triangleBuffer, triCountBuffer, 0);
 
+		if (timer_fetchVertexData == null)
+		{
+			timer_fetchVertexData = new System.Diagnostics.Stopwatch();
+		}
 		timer_fetchVertexData.Start();
 		triCountBuffer.GetData(vertexCountData);
 
@@ -183,6 +355,10 @@ public class GenTest : MonoBehaviour
 		timer_fetchVertexData.Stop();
 
 		//CreateMesh(vertices);
+		if (timer_processVertexData == null)
+		{
+			timer_processVertexData = new System.Diagnostics.Stopwatch();
+		}
 		timer_processVertexData.Start();
 		chunk.CreateMesh(vertexDataArray, numVertices, useFlatShading);
 		timer_processVertexData.Stop();
@@ -280,9 +456,10 @@ public class GenTest : MonoBehaviour
 		int editRadius = Mathf.CeilToInt(radius / editPixelWorldSize);
 		//Debug.Log(editPixelWorldSize + "  " + editRadius);
 
-		float tx = Mathf.Clamp01((point.x + boundsSize / 2) / boundsSize);
-		float ty = Mathf.Clamp01((point.y + boundsSize / 2) / boundsSize);
-		float tz = Mathf.Clamp01((point.z + boundsSize / 2) / boundsSize);
+		Vector3 localPoint = point - transform.position;
+		float tx = Mathf.Clamp01((localPoint.x + boundsSize / 2) / boundsSize);
+		float ty = Mathf.Clamp01((localPoint.y + boundsSize / 2) / boundsSize);
+		float tz = Mathf.Clamp01((localPoint.z + boundsSize / 2) / boundsSize);
 
 		int editX = Mathf.RoundToInt(tx * (editTextureSize - 1));
 		int editY = Mathf.RoundToInt(ty * (editTextureSize - 1));
@@ -315,7 +492,8 @@ public class GenTest : MonoBehaviour
 		for (int i = 0; i < chunks.Length; i++)
 		{
 			Chunk chunk = chunks[i];
-			if (MathUtility.SphereIntersectsBox(point, worldRadius, chunk.centre, Vector3.one * chunk.size))
+			Vector3 chunkWorldCentre = chunk.centre + transform.position;
+			if (MathUtility.SphereIntersectsBox(point, worldRadius, chunkWorldCentre, Vector3.one * chunk.size))
 			{
 
 				chunk.terra = true;

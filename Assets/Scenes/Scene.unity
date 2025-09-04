@@ -330,16 +330,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   numChunks: 10
-  numPointsPerAxis: 35
-  boundsSize: 500
+  numPointsPerAxis: 64
+  boundsSize: 100
   isoLevel: 0
   useFlatShading: 0
-  noiseScale: 2
-  noiseHeightMultiplier: 2
+  noiseScale: 0
+  noiseHeightMultiplier: 0
   blurMap: 1
   blurRadius: 3
   flatWorld: 1
-  planeHeight: 10
+  planeHeight: 30
   meshCompute: {fileID: 7200000, guid: a673d46038c7549d0ab1ffa38907c8c2, type: 3}
   densityCompute: {fileID: 7200000, guid: f56fc61ab2515a449be1f3cc231c3c42, type: 3}
   blurCompute: {fileID: 7200000, guid: a1dfefa5af6fea6428bec38832b86d07, type: 3}
@@ -1204,9 +1204,9 @@ MonoBehaviour:
   terrainMask:
     serializedVersion: 2
     m_Bits: 128
-  terraformRadius: 5
-  terraformSpeedNear: 10
-  terraformSpeedFar: 10
+  terraformRadius: 0.5
+  terraformSpeedNear: 20
+  terraformSpeedFar: 20
 --- !u!4 &1729749299
 Transform:
   m_ObjectHideFlags: 0
@@ -1216,7 +1216,7 @@ Transform:
   m_GameObject: {fileID: 1729749297}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 225.28099, z: 1.417}
+  m_LocalPosition: {x: 0, y: 20, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

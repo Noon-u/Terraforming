@@ -51,6 +51,38 @@ public class Chunk
 		processedTriangles = new List<int>();
 	}
 
+	public Chunk(Vector3Int coord, Vector3 centre, float size, int numPointsPerAxis, MeshFilter existingFilter, MeshRenderer existingRenderer, MeshCollider existingCollider)
+	{
+		this.id = coord;
+		this.centre = centre;
+		this.size = size;
+		this.numPointsPerAxis = numPointsPerAxis;
+
+		mesh = existingFilter ? (existingFilter.sharedMesh != null ? existingFilter.sharedMesh : new Mesh()) : new Mesh();
+		mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+
+		int numPointsTotal = numPointsPerAxis * numPointsPerAxis * numPointsPerAxis;
+		ComputeHelper.CreateStructuredBuffer<PointData>(ref pointsBuffer, numPointsTotal);
+
+		filter = existingFilter != null ? existingFilter : throw new System.ArgumentNullException(nameof(existingFilter));
+		renderer = existingRenderer != null ? existingRenderer : throw new System.ArgumentNullException(nameof(existingRenderer));
+		collider = existingCollider != null ? existingCollider : renderer.gameObject.AddComponent<MeshCollider>();
+
+		if (filter.sharedMesh == null)
+		{
+			filter.sharedMesh = mesh;
+		}
+		else
+		{
+			mesh = filter.sharedMesh;
+		}
+
+		vertexIndexMap = new Dictionary<int2, int>();
+		processedVertices = new List<Vector3>();
+		processedNormals = new List<Vector3>();
+		processedTriangles = new List<int>();
+	}
+
 	public void CreateMesh(VertexData[] vertexData, int numVertices, bool useFlatShading)
 	{
 

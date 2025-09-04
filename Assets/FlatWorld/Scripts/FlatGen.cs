@@ -16,6 +16,10 @@ public class FlatGen : MonoBehaviour
 	public float noiseHeightMultiplier = 10;
 	public float planeHeight = 0;
 
+	[Header("Post-Process")]
+	public bool blurMap;
+	public int blurRadius = 3;
+
 	[Header("References")]
 	public ComputeShader meshCompute;
 	public ComputeShader densityCompute; // set to FlatMap.compute
@@ -26,6 +30,7 @@ public class FlatGen : MonoBehaviour
 	ComputeBuffer triCountBuffer;
 	RenderTexture rawDensityTexture;
 	RenderTexture processedDensityTexture;
+	RenderTexture originalMap;
 	FlatChunk[] chunks;
     public ComputeShader editCompute;
 
@@ -43,20 +48,36 @@ public class FlatGen : MonoBehaviour
 	{
 		int size = numChunks * (numPointsPerAxis - 1) + 1;
 		Create3DTexture(ref rawDensityTexture, size, "Flat Raw Density");
-		processedDensityTexture = rawDensityTexture;
+		if (blurMap)
+		{
+			Create3DTexture(ref processedDensityTexture, size, "Flat Processed Density");
+		}
+		else
+		{
+			processedDensityTexture = rawDensityTexture;
+		}
 
 		densityCompute.SetTexture(0, "DensityTexture", rawDensityTexture);
+		if (blurCompute)
+		{
+			blurCompute.SetTexture(0, "Source", rawDensityTexture);
+			blurCompute.SetTexture(0, "Result", processedDensityTexture);
+		}
 		meshCompute.SetTexture(0, "DensityTexture", processedDensityTexture);
 	}
 
 	void GenerateAllChunks()
 	{
 		ComputeDensity();
+		// Create a stable copy for shading like GenTest to avoid artifacts after edits
+		ComputeHelper.CreateRenderTexture3D(ref originalMap, processedDensityTexture);
+		ComputeHelper.CopyRenderTexture3D(processedDensityTexture, originalMap);
 		// Propagate globals needed by shader
 		if (terrainMaterial)
 		{
-			terrainMaterial.SetTexture("DensityTex", rawDensityTexture);
+			terrainMaterial.SetTexture("DensityTex", originalMap);
 			terrainMaterial.SetFloat("planetBoundsSize", boundsSize);
+			terrainMaterial.SetInt("isFlatWorld", 1);
 		}
 		for (int i = 0; i < chunks.Length; i++)
 		{
@@ -73,6 +94,20 @@ public class FlatGen : MonoBehaviour
 		densityCompute.SetFloat("noiseScale", noiseScale);
 		densityCompute.SetFloat("planeHeight", planeHeight);
 		ComputeHelper.Dispatch(densityCompute, textureSize, textureSize, textureSize);
+
+		ProcessDensityMap();
+	}
+
+	void ProcessDensityMap()
+	{
+		if (blurMap && blurCompute)
+		{
+			int size = rawDensityTexture.width;
+			blurCompute.SetInts("brushCentre", 0, 0, 0);
+			blurCompute.SetInt("blurRadius", blurRadius);
+			blurCompute.SetInt("textureSize", size);
+			ComputeHelper.Dispatch(blurCompute, size, size, size);
+		}
 	}
 
 	void GenerateChunk(FlatChunk chunk)
@@ -119,6 +154,7 @@ public class FlatGen : MonoBehaviour
 		{
 			chunk.Release();
 		}
+		ComputeHelper.Release(originalMap);
 	}
 
 	void CreateChunks()
@@ -203,7 +239,17 @@ public class FlatGen : MonoBehaviour
 		editCompute.SetTexture(0, "EditTexture", rawDensityTexture);
 		ComputeHelper.Dispatch(editCompute, editTextureSize, editTextureSize, editTextureSize);
 
-		float worldRadius = (editRadius + 2) * editPixelWorldSize;
+		if (blurMap && blurCompute)
+		{
+			blurCompute.SetInt("textureSize", editTextureSize);
+			blurCompute.SetInts("brushCentre", editX - blurRadius - editRadius, editY - blurRadius - editRadius, editZ - blurRadius - editRadius);
+			blurCompute.SetInt("blurRadius", blurRadius);
+			blurCompute.SetInt("brushRadius", editRadius);
+			int k = (editRadius + blurRadius) * 2;
+			ComputeHelper.Dispatch(blurCompute, k, k, k);
+		}
+
+		float worldRadius = (editRadius + 1 + ((blurMap) ? blurRadius : 0)) * editPixelWorldSize;
 		int regenCount = 0;
 		for (int i = 0; i < chunks.Length; i++)
 		{
