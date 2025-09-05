@@ -13,6 +13,18 @@ public class Terraformer : MonoBehaviour
 	public float terraformSpeedNear = 0.1f;
 	public float terraformSpeedFar = 0.25f;
 
+	// Max distance from camera at which terraforming can occur
+	public float maxEditDistance = 60f;
+
+	// If true, clicking toggles edit on/off instead of needing to hold
+	public bool toggleEditMode = false;
+
+	// If true, apply edits at fixed intervals rather than every frame
+	public bool useEditInterval = false;
+	public float editIntervalSeconds = 0.15f;
+	// Simulated hold duration per allowed pulse when interval gating is enabled
+	public float clickPulseSeconds = 1f;
+
 
 	Transform cam;
 	GenTest genTest;
@@ -25,6 +37,11 @@ public class Terraformer : MonoBehaviour
 
 	bool isTerraforming;
 	Vector3 lastTerraformPointLocal;
+
+	// Internal state for toggle/interval modes
+	bool addEditingActive;
+	bool subtractEditingActive;
+	float nextEditTime;
 
 	void Start()
 	{
@@ -47,19 +64,34 @@ public class Terraformer : MonoBehaviour
 		bool rayHitTerrain = false;
 		fallbackLastHit = false;
 
+		// Update toggle state based on mouse button clicks (if enabled)
+		if (toggleEditMode)
+		{
+			if (Input.GetMouseButtonDown(0))
+			{
+				addEditingActive = !addEditingActive;
+				if (addEditingActive) subtractEditingActive = false;
+			}
+			if (Input.GetMouseButtonDown(1))
+			{
+				subtractEditingActive = !subtractEditingActive;
+				if (subtractEditingActive) addEditingActive = false;
+			}
+		}
+
 
 
 		for (int i = 0; i < numIterations; i++)
 		{
 			float rayRadius = terraformRadius * Mathf.Lerp(0.01f, 1, i / (numIterations - 1f));
-			if (Physics.SphereCast(cam.position, rayRadius, cam.forward, out hit, 1000, terrainMask))
+			if (Physics.SphereCast(cam.position, rayRadius, cam.forward, out hit, maxEditDistance, terrainMask))
 			{
 				lastTerraformPointLocal = MathUtility.WorldToLocalVector(cam.rotation, hit.point);
 				Terraform(hit.point);
 				rayHitTerrain = true;
 				break;
 			}
-			else if (Physics.SphereCast(cam.position, rayRadius, cam.forward, out hit, 1000, ~0))
+			else if (Physics.SphereCast(cam.position, rayRadius, cam.forward, out hit, maxEditDistance, ~0))
 			{
 				lastTerraformPointLocal = MathUtility.WorldToLocalVector(cam.rotation, hit.point);
 				Terraform(hit.point);
@@ -91,36 +123,66 @@ public class Terraformer : MonoBehaviour
 		float weight01 = Mathf.InverseLerp(dstNear, dstFar, dstFromCam);
 		float weight = Mathf.Lerp(terraformSpeedNear, terraformSpeedFar, weight01);
 
-		// Add terrain
-		if (Input.GetMouseButton(0))
+		// Respect max edit distance
+		if (dstFromCam > maxEditDistance)
 		{
-			isTerraforming = true;
+			return;
+		}
+
+		// Determine intended edit state (toggle or hold)
+		bool addIntent = toggleEditMode ? addEditingActive : Input.GetMouseButton(0);
+		bool subtractIntent = toggleEditMode ? subtractEditingActive : Input.GetMouseButton(1);
+		isTerraforming = addIntent || subtractIntent;
+
+		// Interval gating (cooldown). Only schedule/advance when there is an edit intent.
+		bool canApplyThisFrame = true;
+		if (useEditInterval && isTerraforming)
+		{
+			if (Time.time < nextEditTime)
+			{
+				canApplyThisFrame = false;
+			}
+			else
+			{
+				nextEditTime = Time.time + editIntervalSeconds;
+			}
+		}
+
+		// Scale weight so each allowed pulse equals holding for clickPulseSeconds
+		float weightMultiplier = 1f;
+		if (useEditInterval && isTerraforming && canApplyThisFrame)
+		{
+			weightMultiplier = Mathf.Max(0.0001f, clickPulseSeconds / Mathf.Max(Time.deltaTime, 0.0001f));
+		}
+
+		// Add terrain
+		if (addIntent && canApplyThisFrame)
+		{
 			if (flatGen)
 			{
-				flatGen.Terraform(terraformPoint, -weight, terraformRadius);
+				flatGen.Terraform(terraformPoint, -(weight * weightMultiplier), terraformRadius);
 				flatFirstPersonController?.NotifyTerrainChanged(terraformPoint, terraformRadius);
 			}
 			else if (genTest)
 			{
-				genTest.Terraform(terraformPoint, -weight, terraformRadius);
+				genTest.Terraform(terraformPoint, -(weight * weightMultiplier), terraformRadius);
 				firstPersonController.NotifyTerrainChanged(terraformPoint, terraformRadius);
 			}
 		}
 		// Subtract terrain
-		else if (Input.GetMouseButton(1))
+		else if (subtractIntent && canApplyThisFrame)
 		{
-			isTerraforming = true;
 			if (flatGen)
 			{
-				flatGen.Terraform(terraformPoint, weight, terraformRadius);
+				flatGen.Terraform(terraformPoint, (weight * weightMultiplier), terraformRadius);
 			}
 			else if (genTest)
 			{
-				genTest.Terraform(terraformPoint, weight, terraformRadius);
+				genTest.Terraform(terraformPoint, (weight * weightMultiplier), terraformRadius);
 			}
 		}
 
-		if (isTerraforming)
+		if (isTerraforming && canApplyThisFrame)
 		{
 			onTerrainModified?.Invoke();
 		}
